@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     await user.save();
 
     const token = signToken({ uid: String(user._id), email: user.email, role: user.role });
-    const res = ok({ user: user.toPublicJSON() }, { status: 201 });
+    const res = ok({ user: user.toPublicJSON(), token }, { status: 201 });
     res.cookies.set(AUTH_COOKIE, token, authCookieOptions());
     return res;
   });

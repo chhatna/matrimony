@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { NextRequest } from "next/server";
 
 const COOKIE_NAME = "mt_token";
@@ -31,18 +31,45 @@ export function verifyToken(token: string): SessionPayload | null {
   }
 }
 
-/** Read session from server-component / route-handler cookies. */
+function extractBearerToken(): string | null {
+  try {
+    const h = headers();
+    const auth = h.get("authorization") || h.get("Authorization");
+    if (!auth) return null;
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    return m?.[1]?.trim() || null;
+  } catch {
+    // headers() throws in contexts where it's not available; fall through.
+    return null;
+  }
+}
+
+/**
+ * Read session from server-component / route-handler context.
+ * Accepts the token either in the `mt_token` cookie (web) or the
+ * `Authorization: Bearer <token>` header (mobile / API clients).
+ */
 export function getSession(): SessionPayload | null {
-  const token = cookies().get(COOKIE_NAME)?.value;
+  const cookieToken = cookies().get(COOKIE_NAME)?.value;
+  const token = cookieToken || extractBearerToken();
   if (!token) return null;
   return verifyToken(token);
 }
 
 /** Read session from a NextRequest (for middleware or edge handlers). */
 export function getSessionFromRequest(req: NextRequest): SessionPayload | null {
-  const token = req.cookies.get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  return verifyToken(token);
+  const cookieToken = req.cookies.get(COOKIE_NAME)?.value;
+  if (cookieToken) {
+    const s = verifyToken(cookieToken);
+    if (s) return s;
+  }
+  const auth = req.headers.get("authorization") || req.headers.get("Authorization");
+  if (auth) {
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    const bearer = m?.[1]?.trim();
+    if (bearer) return verifyToken(bearer);
+  }
+  return null;
 }
 
 export const AUTH_COOKIE = COOKIE_NAME;

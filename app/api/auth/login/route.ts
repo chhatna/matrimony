@@ -27,7 +27,10 @@ export async function POST(req: Request) {
     await user.save();
 
     const token = signToken({ uid: String(user._id), email: user.email, role: user.role });
-    const res = ok({ user: user.toPublicJSON() });
+    // Return the token in the response body so non-cookie clients (e.g. the
+    // Android app) can store it and attach Authorization: Bearer on subsequent
+    // requests. Web clients ignore it and keep using the httpOnly cookie.
+    const res = ok({ user: user.toPublicJSON(), token });
     res.cookies.set(AUTH_COOKIE, token, authCookieOptions());
     return res;
   });
