@@ -77,6 +77,8 @@ const MessageSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const UserLiteSchema = new mongoose.Schema({ fullName: { type: String } }, { strict: false });
+
 const NotificationSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
@@ -235,7 +237,15 @@ app.prepare().then(async () => {
         if (!(await areConnected(uid, to))) {
           return ack && ack({ ok: false, error: "Interest not accepted" });
         }
-        io.to(`user:${to}`).emit("call:invite", { from: uid, offer });
+        let fromName = "";
+        try {
+          const UserLite = getModel("User", UserLiteSchema);
+          const u = await UserLite.findById(uid).select("fullName").lean();
+          fromName = u?.fullName || "";
+        } catch (e) {
+          // best-effort name lookup
+        }
+        io.to(`user:${to}`).emit("call:invite", { from: uid, fromName, offer });
         if (ack) ack({ ok: true });
       } catch (e) {
         console.error("[socket call:invite]", e);
