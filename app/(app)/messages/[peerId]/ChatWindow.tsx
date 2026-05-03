@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { format } from "date-fns";
+import VoiceCall from "./VoiceCall";
 
 type Msg = { _id: string; from: string; to: string; body: string; createdAt: string; readAt?: string | null };
 type Peer = { _id: string; fullName: string; photo: string | null; subtitle: string };
@@ -13,6 +14,7 @@ export default function ChatWindow({ peer }: { peer: Peer }) {
   const [me, setMe] = useState<string | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -33,6 +35,7 @@ export default function ChatWindow({ peer }: { peer: Peer }) {
   useEffect(() => {
     const s: Socket = io("/", { path: "/api/socket", withCredentials: true });
     socketRef.current = s;
+    setSocket(s);
     s.on("connect", () => setConnected(true));
     s.on("disconnect", () => setConnected(false));
     s.on("chat:message", (msg: Msg) => {
@@ -54,6 +57,7 @@ export default function ChatWindow({ peer }: { peer: Peer }) {
       }
     });
     return () => {
+      setSocket(null);
       s.close();
     };
   }, [peer._id, me]);
@@ -112,6 +116,7 @@ export default function ChatWindow({ peer }: { peer: Peer }) {
             </div>
           </div>
         </Link>
+        <VoiceCall socket={socket} peerId={peer._id} peerName={peer.fullName} />
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50">

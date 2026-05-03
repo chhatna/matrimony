@@ -213,6 +213,55 @@ app.prepare().then(async () => {
         console.error("[socket chat:read]", e);
       }
     });
+
+    // -------- Voice call signaling --------
+    // WebRTC signaling is relayed through socket.io. We validate that an
+    // accepted interest exists between caller and callee, same rule as chat.
+    async function areConnected(a, b) {
+      if (!mongoose.Types.ObjectId.isValid(a) || !mongoose.Types.ObjectId.isValid(b)) return false;
+      await connectDB();
+      const Interest = getModel("Interest", InterestSchema);
+      const doc = await Interest.findOne({
+        status: "accepted",
+        $or: [{ from: a, to: b }, { from: b, to: a }],
+      }).select("_id");
+      return !!doc;
+    }
+
+    socket.on("call:invite", async (payload, ack) => {
+      try {
+        const { to, offer } = payload || {};
+        if (!to || !offer) return ack && ack({ ok: false, error: "invalid payload" });
+        if (!(await areConnected(uid, to))) {
+          return ack && ack({ ok: false, error: "Interest not accepted" });
+        }
+        io.to(`user:${to}`).emit("call:invite", { from: uid, offer });
+        if (ack) ack({ ok: true });
+      } catch (e) {
+        console.error("[socket call:invite]", e);
+        if (ack) ack({ ok: false, error: "internal error" });
+      }
+    });
+
+    socket.on("call:accept", (payload) => {
+      if (!payload || !payload.to || !payload.answer) return;
+      io.to(`user:${payload.to}`).emit("call:accept", { from: uid, answer: payload.answer });
+    });
+
+    socket.on("call:decline", (payload) => {
+      if (!payload || !payload.to) return;
+      io.to(`user:${payload.to}`).emit("call:decline", { from: uid });
+    });
+
+    socket.on("call:end", (payload) => {
+      if (!payload || !payload.to) return;
+      io.to(`user:${payload.to}`).emit("call:end", { from: uid });
+    });
+
+    socket.on("call:ice", (payload) => {
+      if (!payload || !payload.to || !payload.candidate) return;
+      io.to(`user:${payload.to}`).emit("call:ice", { from: uid, candidate: payload.candidate });
+    });
   });
 
   server.listen(port, () => {
