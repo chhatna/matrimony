@@ -124,9 +124,27 @@ app.prepare().then(async () => {
 
   io.use((socket, nextMw) => {
     try {
-      const raw = socket.handshake.headers.cookie || "";
-      const cookies = cookie.parse(raw);
-      const token = cookies[AUTH_COOKIE];
+      // Accept the JWT from any of three places, in priority order:
+      //  1. socket.io `auth: { token }` handshake (preferred for mobile)
+      //  2. Authorization: Bearer <jwt> header (also for non-browser clients)
+      //  3. mt_token cookie (browser default)
+      let token = null;
+      const auth = socket.handshake.auth || {};
+      if (typeof auth.token === "string" && auth.token.length > 0) {
+        token = auth.token;
+      }
+      if (!token) {
+        const authHeader = socket.handshake.headers.authorization || "";
+        if (authHeader.startsWith("Bearer ")) {
+          token = authHeader.slice(7);
+        }
+      }
+      if (!token) {
+        const raw = socket.handshake.headers.cookie || "";
+        const cookies = cookie.parse(raw);
+        token = cookies[AUTH_COOKIE];
+      }
+
       const session = token ? verifyToken(token) : null;
       if (!session) return nextMw(new Error("unauthorized"));
       socket.data.uid = session.uid;
