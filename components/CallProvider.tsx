@@ -11,24 +11,34 @@ import {
 import { io, type Socket } from "socket.io-client";
 import { Phone, PhoneOff, Mic, MicOff } from "lucide-react";
 
-// Google STUN works for symmetric NAT-friendly home WiFi. The OpenRelay
-// public TURN is a free relay we fall back to when STUN can't punch a
-// hole — required for many mobile / corporate networks. Without TURN,
-// Android caller -> Web callee can stall in ICE checking on networks
-// where neither side can reach the other directly.
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  {
-    urls: [
-      "turn:openrelay.metered.ca:80",
-      "turn:openrelay.metered.ca:443",
-      "turn:openrelay.metered.ca:443?transport=tcp",
-    ],
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  },
-];
+// STUN gives us reflexive candidates. TURN is required to relay media
+// when both peers are behind symmetric NAT (very common on mobile carriers
+// and carrier-grade NAT). Without TURN, Android-on-mobile-data calling
+// Web-on-WiFi gets stuck in ICE checking and falls into FAILED.
+//
+// Sign up for a free Metered.ca TURN account (50 GB/month) and set these
+// three env vars in Render:
+//   NEXT_PUBLIC_TURN_URLS         — comma-separated, e.g.
+//                                   "turn:a.relay.metered.ca:80,turn:a.relay.metered.ca:443?transport=tcp"
+//   NEXT_PUBLIC_TURN_USERNAME
+//   NEXT_PUBLIC_TURN_CREDENTIAL
+const ICE_SERVERS: RTCIceServer[] = (() => {
+  const servers: RTCIceServer[] = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ];
+  const turnUrls = process.env.NEXT_PUBLIC_TURN_URLS;
+  const turnUser = process.env.NEXT_PUBLIC_TURN_USERNAME;
+  const turnCred = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+  if (turnUrls && turnUser && turnCred) {
+    servers.push({
+      urls: turnUrls.split(",").map((u) => u.trim()).filter(Boolean),
+      username: turnUser,
+      credential: turnCred,
+    });
+  }
+  return servers;
+})();
 
 type CallState = "idle" | "outgoing" | "incoming" | "connecting" | "in-call";
 
